@@ -48,19 +48,20 @@ def main():
         return  # encerra
 
     pdf_text, offsets = load_pdf(file_path)  # carrega texto completo e offsets
-    print("TEXTO CARREGADO")  # confirma carregamento
-    print(pdf_text[:1000])  # mostra os primeiros 1000 caracteres
+    print("Trechos carregados")  # confirma carregamento
+    #print(pdf_text[:1000])  # mostra os primeiros 1000 caracteres
 
     chunks = split_text(pdf_text, offsets, chunk_size=1000, overlap=200)  # fatia texto em chunks
     chunk_texts = [c["text"] for c in chunks]  # extrai somente o texto de cada chunk para embeddar
     embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")  # carrega modelo de embeddings
     embs = embed_model.encode(chunk_texts, convert_to_numpy=True, normalize_embeddings=True).astype("float32")  # gera vetores normalizados
-
+    print("Modelo SentenceTransformer carregado")
     d = embs.shape[1]  # dimensão dos vetores
     index = faiss.IndexFlatIP(d)  # índice FAISS de produto interno (para cosseno com vetores normalizados)
     index.add(embs)  # adiciona todos os vetores ao índice
-
+    print("Índice FAISS criado")
     cross = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")  # reranker mais preciso (cross-encoder)
+    print("Modelo CrossEncoder Carregado")
 
     def buscar(pergunta, k_base=30, k_final=5):  # busca no FAISS e reranqueia, retornando top k_final
         q_emb = embed_model.encode([pergunta], convert_to_numpy=True, normalize_embeddings=True).astype("float32")  # embedding da pergunta
@@ -83,7 +84,7 @@ def main():
         if pergunta.lower() == "sair":  # condição de saída
             break  # encerra loop
         resultados = buscar(pergunta)  # obtém melhores chunks para a pergunta
-        print("Top resultados:")  # cabeçalho informativo
+        #print("Top resultados:")  # cabeçalho informativo
         for r in resultados:  # percorre chunks selecionados
             print(f"\nScore: {r['score']:.4f} | Página: {r['page']}")  # mostra score e página
             print(r["text"][:500])  # mostra parte do texto do chunk
@@ -112,6 +113,7 @@ def mistral(pergunta, contextos):
     if not api_key:  # valida se chave está definida
         raise RuntimeError("Defina a API MISTRAL")  # alerta para configurar
     client = Mistral(api_key=api_key)  # instancia cliente Mistral
+    print("Modelo Mistral Carregado")
     prompt_text = prompt(pergunta, contextos)  # monta prompt com pergunta e contextos
     resp = client.chat.complete(
         model=mistral_model,  # modelo escolhido
