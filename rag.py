@@ -131,7 +131,6 @@ def gerar_indice(chunks):
     paginas_exibidas = set()
     for c in chunks:
         pagina = c["page"]
-
         if pagina in paginas_exibidas:
             continue
         paginas_exibidas.add(pagina)
