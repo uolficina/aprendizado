@@ -87,7 +87,7 @@ def prompt_mistral(pergunta, contextos):
     contexto = "\n\n".join(blocos)  # junta todos os trechos separados por linha em branco
     return (
         "Resuma ou responda à pergunta usando apenas o contexto fornecido. "  # instrução ao modelo
-        "Se não houver resposta, diga que não sabe.\n\n"  # reforça para não inventar
+        "Se não houver resposta, diga que não sabe.\n\n"
         f"Pergunta: {pergunta}\n\n"  # insere pergunta do usuário
         f"Contexto:\n{contexto}"  # insere trechos do PDF
     )
@@ -107,6 +107,39 @@ def mistral(pergunta, contextos):
     usage = resp.usage
     return resp.choices[0].message.content, usage  # devolve texto da resposta
 
+def gerar_titulo_chunk(trecho):
+    api_key = mistral_api
+    client = Mistral(api_key=api_key)
+
+    prompt = (
+        "Gere APENAS UM TITULO CURTO para o texto abaixo.\n"
+        "Regras do titulo:\n"
+        "- Deve ter entre 2 a 5 palavras.\n"
+        "- Não descreva frases longas.\n"
+        "- Não escreva explicações.\n"
+        "- Não use dois-pontos.\n\n"
+        f"Trecho:\n{trecho}"
+    ) 
+    resp = client.chat.complete(
+        model="mistral-small-latest",
+        messages=[{"role":"user","content":prompt}],
+        temperature=0.1
+    )
+    return resp.choices[0].message.content.strip()
+
+def gerar_indice(chunks):
+    paginas_exibidas = set()
+    for c in chunks:
+        pagina = c["page"]
+
+        if pagina in paginas_exibidas:
+            continue
+        paginas_exibidas.add(pagina)
+        trecho = c["text"]
+        titulo = gerar_titulo_chunk(trecho)
+        print(f"Página {pagina}: {titulo}")
+
+
 def chat():
     file_path = input("Digite o caminho do pdf: ").strip().strip('"') #lê o caminho do pdf
     if not file_path: #se nenhum caminho fornecido
@@ -118,9 +151,14 @@ def chat():
     global embed_model, index, cross, chunks, chunk_texts
     embed_model, index, cross, chunks, chunk_texts = rag(file_path)
     while True:
-        pergunta= input("Digite sua pergunta ao documento (ou digite 'sair' para encerrar): ").strip() #le a pergunta do usuario
-        if pergunta.lower() == "sair": #condição  de saida
+        pergunta= input("Digite sua pergunta ao documento ('gerar indice' ou 'trocar pdf' ou 'sair'): ").strip().lower() #le a pergunta do usuario
+        if pergunta == "sair": #condição  de saida
             break #encerra 
+        if pergunta == "gerar indice":
+            gerar_indice(chunks)
+            continue
+        if pergunta == "trocar pdf":
+            return chat()
         resultados = busca_rerank(pergunta) #obtem retorno da função busca rerank com os melhores trechos
         #for r in resultados:  # percorre chunks selecionados
         #        print(f"\nScore: {r['score']:.4f} | Página: {r['page']}")  # mostra score e página
