@@ -5,6 +5,7 @@ import numpy as np
 import faiss
 from mistralai import Mistral
 import textwrap
+import time 
 
 # variaveis LLM
 modelo_mistral = "mistral-small-latest"
@@ -112,7 +113,7 @@ def mistral(pergunta, contextos):
     usage = resp.usage
     return resp.choices[0].message.content, usage  # devolve texto da resposta
 
-def gerar_titulo_chunk(trecho):
+def gerar_titulo_chunk(trecho, tentativas=5, base_delay=2):
     api_key = mistral_api
     client = Mistral(api_key=api_key)
 
@@ -124,13 +125,27 @@ def gerar_titulo_chunk(trecho):
         "- Não escreva explicações.\n"
         "- Não use dois-pontos.\n\n"
         f"Trecho:\n{trecho}"
-    ) 
-    resp = client.chat.complete(
-        model="mistral-small-latest",
-        messages=[{"role":"user","content":prompt}],
-        temperature=0.1
     )
-    return resp.choices[0].message.content.strip()
+
+    for tentativa in range(1, tentativas +1):
+        try: 
+            resp = client.chat.complete(
+                model="mistral-small-latest",
+                messages=[{"role":"user","content":prompt}],
+                temperature=0.1
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            msg = str(e).lower()
+            status = getattr(e, "http_status", None) or getattr(e, "status_code", None)
+            if (status == 429) or ("rate limit" in msg) or ("too many requests" in msg):
+                if tentativa == tentativas:
+                    raise
+                espera = base_delay * (2 ** (tentativa - 1))
+                print(f"Rate limit; aguardando  {espera:.1f}s antes de tentar novamente...")
+                time.sleep(espera)
+                continue
+            raise
 
 def gerar_indice(chunks):
     paginas_exibidas = set()
