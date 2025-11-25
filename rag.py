@@ -4,12 +4,16 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 import numpy as np
 import faiss
 from mistralai import Mistral
+import textwrap
+
 # variaveis LLM
 modelo_mistral = "mistral-small-latest"
 modelo_embedings = "intfloat/multilingual-e5-base"
 modelo_crossencoder = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 #api
 mistral_api = os.getenv("MISTRAL_API_KEY")
+total_paginas = 0  # será preenchido ao carregar o PDF
+paginas_texto = []  # texto bruto de cada página
 
 #funções
 def carregar_pdf(file_path):
@@ -23,7 +27,7 @@ def carregar_pdf(file_path):
         texts.append(page_text) #adicona o texto desta pagina
         cursor += len(page_text) + 1 #avança o cursos +1 na quebra de linha
     full_text = "\n".join(texts) # concatena paginas com quebras de linha
-    return full_text, offsets #devolve texto completo e offsets por pagina
+    return full_text, offsets, texts #devolve texto completo, offsets e textos por pagina
 
 def encontra_paginas(start_idx, page_offsets):
     page = 0 #indice da pagina
@@ -47,7 +51,9 @@ def divisor_trechos(text, page_offsets, chunk_size=2000, overlap=400):
     print("PDF COM TRECHOS DEMARCADOS")
 
 def rag(file_path):
-    pdf_text, offsets = carregar_pdf(file_path) #carrega texto completo
+    global total_paginas, paginas_texto
+    pdf_text, offsets, paginas_texto = carregar_pdf(file_path) #carrega texto completo
+    total_paginas = len(offsets)
     chunks = divisor_trechos(pdf_text, offsets, chunk_size=2000, overlap=400)
     chunk_texts = [c["text"] for c in chunks]
     embed_model = SentenceTransformer(modelo_embedings)
@@ -77,8 +83,7 @@ def busca_rerank(pergunta, k_base=30, k_final=3): #busca no faiss e rank top 3 e
             "page": chunks[i]["page"], #pagina de origem
             "text": chunks[i]["text"], #texto do trecho
         })
-        return resultados #devolve trechos rankeados
-        print("RANKING DE TRECHOS ELABORADO")
+    return resultados #devolve trechos rankeados
 
 def prompt_mistral(pergunta, contextos):
     blocos = []  # acumula trechos formatados com página
@@ -138,6 +143,56 @@ def gerar_indice(chunks):
         titulo = gerar_titulo_chunk(trecho)
         print(f"Página {pagina}: {titulo}")
 
+def formatar_texto(texto, largura=80):
+    linhas = []
+    for paragrafo in texto.splitlines():
+        for linha in textwrap.wrap(paragrafo, largura):
+            if len(linha) < largura - len(linha):
+               deficit = largura - len(linha)
+               gaps = linha.count("")
+               partes = linha.split("")
+               base, resto = divmod(deficit, gaps)
+               for i in range(resto):
+                   partes[i] += " "
+               linha = (" " * base).join(partes)
+            linhas.append(linha)
+    return "\n".join(linhas)
+
+def exibir_pagina(chunks, pagina_humana, trim=None):
+    pagina_idx = pagina_humana - 1  # alinha contagem humana (1…) com índice interno (0…)
+    if total_paginas and (pagina_idx < 0 or pagina_idx >= total_paginas):
+        print(f"O documento tem apenas {total_paginas} páginas.")
+        return
+    if paginas_texto and 0 <= pagina_idx < len(paginas_texto):
+        texto = paginas_texto[pagina_idx]
+        if trim and len(texto) > trim:
+            texto = texto[:trim].rstrip() + "..."
+        print(f"\nPágina {pagina_humana} (texto completo):\n{texto}")
+        return
+    trechos = [c for c in chunks if c["page"] == pagina_idx]
+    if not trechos:
+        print(f"Nenhum trecho encontrado na página {pagina_humana}")
+        return
+    for i, c in enumerate(trechos, 1):
+        texto = c["text"]
+        texto = formatar_texto(texto, largura=80)
+        if trim and len(texto) > trim:
+            texto = texto[:trim].rstrip() + "..."
+        print(f"\nTrecho {i} (página {pagina_humana}):\n{texto}")
+       
+def escolher_pagina():
+    pagina_escolhida = input("Digite o número da página que você quer ler (ex: 1, 2, 3...): ")
+    try:
+        num = int(pagina_escolhida)
+        if num <= 0:
+            raise ValueError
+    except ValueError:
+        print("Informe um número de página válido (>= 1).")
+        return
+    if total_paginas and num > total_paginas:
+        print(f"O documento tem apenas {total_paginas} páginas.")
+        return
+    exibir_pagina(chunks, pagina_humana=num)   
 
 def chat():
     file_path = input("Digite o caminho do pdf: ").strip().strip('"') #lê o caminho do pdf
@@ -150,11 +205,14 @@ def chat():
     global embed_model, index, cross, chunks, chunk_texts
     embed_model, index, cross, chunks, chunk_texts = rag(file_path)
     while True:
-        pergunta= input("Digite sua pergunta ao documento ('gerar indice' ou 'trocar pdf' ou 'sair'): ").strip().lower() #le a pergunta do usuario
+        pergunta= input("Digite sua pergunta ao documento (opções: gerar indice / ler pagina / trocar pdf / sair'): ").strip().lower() #le a pergunta do usuario
         if pergunta == "sair": #condição  de saida
             break #encerra 
         if pergunta == "gerar indice":
             gerar_indice(chunks)
+            continue
+        if pergunta == "ler pagina":
+            escolher_pagina()
             continue
         if pergunta == "trocar pdf":
             return chat()
@@ -169,6 +227,3 @@ def chat():
 
 if __name__ == "__main__":  # executa main se rodar diretamente
     chat()  # chama fluxo principal        
-
-
-
