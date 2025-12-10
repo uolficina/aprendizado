@@ -1,13 +1,13 @@
-# RAG em PDF via Terminal
+# Terminal PDF RAG
 
-CLI em Python que lê um PDF local, divide em trechos, indexa no FAISS, reranqueia com CrossEncoder e responde via chat da Mistral. Funciona em loop: você informa um PDF, faz perguntas, pode gerar um índice rápido das páginas, ler páginas específicas ou trocar de arquivo sem reiniciar.
+Python CLI that reads a local PDF, splits it into chunks, indexes with FAISS, re-ranks with a CrossEncoder, and answers via Mistral chat. It runs in a loop: pick a PDF, ask questions, generate a quick semantic index, read specific pages, or switch files without restarting.
 
-## Requisitos
+## Requirements
 - Python 3.10+
-- Variável de ambiente `MISTRAL_API_KEY` com a chave da Mistral
-- Dependências: `pypdf`, `sentence_transformers`, `faiss-cpu`, `mistralai`, `numpy`
+- Environment variable `MISTRAL_API_KEY` with your Mistral key
+- Dependencies: `pypdf`, `sentence_transformers`, `faiss-cpu`, `mistralai`, `numpy`
 
-## Instalação rápida
+## Quick setup
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
@@ -15,47 +15,45 @@ pip install --upgrade pip
 pip install pypdf sentence_transformers faiss-cpu mistralai numpy
 ```
 
-Configure a chave da API:
+Set your API key:
 ```bash
-export MISTRAL_API_KEY="sua-chave-aqui"  # Windows: set MISTRAL_API_KEY=sua-chave-aqui
+export MISTRAL_API_KEY="your-key-here"  # Windows: set MISTRAL_API_KEY=your-key-here
 ```
 
-## Como usar
+## How to run
 ```bash
 python rag.py
 ```
-1) Informe o caminho do PDF (pode estar na mesma pasta).  
-2) Faça perguntas ou use um dos comandos abaixo.  
-3) Digite `sair` para encerrar.
 
-Comandos do chat:
-- Perguntas livres: "Qual o resumo do capítulo 1?"
-- `gerar indice`: cria títulos curtos para cada página (consome API da Mistral).
-- `ler pagina`: pede um número e mostra o texto completo daquela página.
-- `trocar pdf`: volta a pedir um novo arquivo e reinicia o índice.
-- `sair`: finaliza o script.
+## Menu flow
+1) **Load PDF**: provide a file path (same folder or absolute).  
+2) **Chat with the PDF**: ask questions about the loaded document; type `back` to return to the menu. Shows token counts for each answer.  
+3) **Generate Semantic Index**: creates short titles per page using Mistral (API usage).  
+4) **Show specific page**: enter a page number to view the full extracted text; falls back to chunked view if needed.  
+5) **Exit**: quit the CLI.
 
-Exemplo rápido:
+Example:
 ```bash
-export MISTRAL_API_KEY="minha-chave"
+export MISTRAL_API_KEY="my-key"
 python rag.py
-# caminho do PDF: /caminho/para/documento.pdf
-# pergunta: Quais são as conclusoes?
+# Choose 1) Load PDF -> /path/to/document.pdf
+# Choose 2) Chat with the PDF -> "What are the main conclusions?"
 ```
 
-## Como funciona
-- Chunking: `divisor_trechos` cria janelas de 2000 caracteres com overlap de 400 e registra a página de origem.
-- Busca híbrida: embeddings `intfloat/multilingual-e5-base` normalizados + índice FAISS (Inner Product).
-- Rerank: top-30 candidatos reranqueados com `cross-encoder/ms-marco-MiniLM-L-6-v2`.
-- Geração: prompt compacto para `mistral-small-latest` com contagem de tokens impressa.
-- Leitura direta: `ler pagina` usa o texto extraído bruto de cada página quando disponível.
+## How it works
+- Chunking: `split_chunks` makes 2,000-character windows with 400 overlap and records the source page.
+- Retrieval: normalized embeddings (`intfloat/multilingual-e5-base`) indexed in FAISS (Inner Product).
+- Re-rank: `search_rerank` reranks the top 30 with `cross-encoder/ms-marco-MiniLM-L-6-v2` and returns the best 3.
+- Generation: `build_mistral_prompt` + `mistral_chat` send a concise prompt to `mistral-small-latest` and print token usage.
+- Direct reading: `show_page` uses the raw extracted page text when available.
 
-## Ajustes rápidos
-- Tamanho dos trechos: altere `chunk_size` e `overlap` em `divisor_trechos`.
-- Quantidade de candidatos: ajuste `k_base` e `k_final` em `busca_rerank`.
-- Temperatura do modelo: modifique `temperature` na chamada `mistral`.
+## Quick tweaks
+- Chunk size/overlap: adjust `chunk_size` and `overlap` in `split_chunks`.
+- Candidate counts: tune `k_base` and `k_final` in `search_rerank`.
+- Temperature/model: change `temperature` or `mistral_model` in `mistral_chat`.
+- Titles/index: `generate_index` calls `generate_chunk_title` (Mistral-powered) to label pages.
 
-## Problemas comuns
-- **Chave não configurada:** "Defina a API MISTRAL" indica `MISTRAL_API_KEY` ausente ou vazia.
-- **PDF sem texto extraível:** `pypdf` precisa de texto incorporado; use OCR se o arquivo for imagem.
-- **Tempo/memória:** PDFs grandes geram muitos chunks; reduza `chunk_size`, limite páginas ou troque de PDF com `trocar pdf`.
+## Troubleshooting
+- **Missing key**: Runtime error telling you to set `MISTRAL_API_KEY` means the env var is absent or empty.
+- **PDF has no extractable text**: `pypdf` needs embedded text; run OCR if the file is image-only.
+- **Large PDFs are slow/heavy**: reduce `chunk_size`, limit pages, or load a smaller file.
